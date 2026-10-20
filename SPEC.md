@@ -1,0 +1,235 @@
+# Spec: Job Tracker
+
+## Objective
+
+Pengganti `Job Tracker.xlsx`: web app pribadi buat mencatat lamaran kerja, update status, dan lihat progresnya. Bisa dibuka dari laptop maupun HP.
+
+**Pengguna:** siapa aja bisa daftar sendiri. Tiap user cuma bisa lihat dan ubah lamarannya sendiri.
+
+**User stories**
+1. Daftar (sign-up) pakai email + password, konfirmasi lewat email, login, dan logout. Tanpa login, nggak ada halaman/data yang bisa diakses.
+1b. Lupa password: masukkan email → dapat link reset → set password baru → langsung login.
+2. Lihat semua lamaran di tabel, urut dari tanggal lamar terbaru.
+3. Tambah lamaran baru: perusahaan, posisi, tanggal lamar, link lowongan, lokasi, platform, status, catatan, responsibilities, requirements.
+4. Edit lamaran, terutama ganti status dengan cepat.
+5. Hapus lamaran (pakai konfirmasi).
+6. Filter by status dan platform, plus search nama perusahaan/posisi.
+7. Lihat ringkasan jumlah lamaran per status.
+8. Export semua data (atau hasil filter) ke CSV yang bisa langsung dibuka di Excel.
+9. 13 lamaran yang ada di Excel di-import sekali di awal, masuk ke akun pemilik.
+
+## Tech Stack
+
+- **Next.js 16.4** (App Router, TypeScript, Turbopack), di-deploy ke **Vercel**. Baca `node_modules/next/dist/docs/` sebelum pakai API Next, karena banyak yang berubah dari versi lama (lihat `AGENTS.md`).
+  - `cacheComponents` **dimatikan**. Semua halaman berisi data per-user, jadi model caching lama (render dinamis tiap request) lebih simpel daripada bungkus semua baca sesi pakai `<Suspense>`.
+  - Middleware sekarang namanya `proxy.ts` (export `proxy`).
+- **Supabase**: Postgres + Auth, akses lewat `@supabase/supabase-js` + `@supabase/ssr`
+- **Cloudscape Design System** (AWS) sebagai satu-satunya UI layer:
+  - `@cloudscape-design/components`: AppLayout, Table, Form, Modal, Select, DatePicker, TextFilter, StatusIndicator, dll.
+  - `@cloudscape-design/global-styles`: di-import sekali di root layout
+  - `@cloudscape-design/collection-hooks`: `useCollection` buat filter, sort, dan pagination tabel
+  - `I18nProvider` + messages locale `id`, jadi teks bawaan komponen (pagination, empty state, dll.) berbahasa Indonesia
+- **Vitest** buat unit test logic murni
+- Nggak pakai Tailwind/CSS framework lain (bisa bentrok sama style Cloudscape) dan nggak pakai state library.
+
+**Integrasi Cloudscape + Next.js**
+- Semua komponen Cloudscape cuma dipakai di file `'use client'`. Server component cuma ambil data, lalu oper ke client component.
+- `I18nProvider` dipasang di `components/Providers.tsx` (`'use client'`), lalu dibungkus di root layout.
+- **UI Cloudscape cuma di-render di client.** `Providers` baru render children setelah mount (`useSyncExternalStore`). Alasannya, Cloudscape ngukur DOM waktu render (`browserScrollbarSize`, `useVisualRefresh`), jadi HTML dari SSR selalu beda sama client dan bikin hydration mismatch. Data tetap diambil di server component dan mutasi tetap lewat server action. Konsekuensinya, first paint kosong sebentar sampai JS jalan. Nggak masalah buat app di balik login yang nggak butuh SEO.
+- `transpilePackages` **nggak dibutuhkan**. Spike T1 udah buktiin Next 16.4 + Turbopack bisa build, dev, dan SSR Cloudscape tanpa config tambahan.
+- Warning `useLayoutEffect` waktu SSR emang dikenal tim Cloudscape dan aman diabaikan.
+
+## Data Model
+
+```sql
+create table applications (
+  id               uuid primary key default gen_random_uuid(),
+  user_id          uuid not null default auth.uid() references auth.users on delete cascade,
+  company          text not null,
+  position         text not null,
+  applied_at       date not null default current_date,
+  job_url          text,
+  location         text,
+  source           text not null check (source in
+                     ('Jobstreet','Kalibrr','LinkedIn','Astra Career','Glints',
+                      'Website Perusahaan','Referral','Lainnya')),
+  status           text not null default 'Applied' check (status in
+                     ('Applied','Seen','Psikotes','Interview HR','Interview User',
+                      'Offering','Diterima','Ditolak')),
+  notes            text,
+  responsibilities text,   -- 1 poin per baris
+  requirements     text,   -- 1 poin per baris
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+
+alter table applications enable row level security;
+create policy "owner only" on applications
+  for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- Project dibuat dengan "Automatically expose new tables" = OFF,
+-- jadi akses Data API harus di-grant eksplisit. Role anon sengaja nggak dikasih apa-apa.
+grant select, insert, update, delete on applications to authenticated;
+
+-- Keep-alive: target ping harian dari Vercel Cron (lihat Infra & Config).
+create function public.ping() returns int language sql stable as 'select 1';
+grant execute on function public.ping() to anon;
+```
+
+- Sheet **Detail** dari Excel digabung jadi kolom `responsibilities` / `requirements`, jadi nggak ada tabel kedua.
+- Daftar status/platform disimpan sekali di `lib/constants.ts` (buat UI) dan di-mirror di check constraint (buat DB).
+- RLS per `user_id` yang misahin data antar user. Ini juga yang bikin anon key aman walaupun ke-expose di browser.
+- Akun dikelola Supabase Auth (`auth.users`). Nggak ada tabel profile di v1.
+
+## Auth
+
+Backend-nya pakai Supabase Auth bawaan, jadi nggak bikin sistem auth sendiri. UI-nya dibikin sendiri pakai form Cloudscape (Auth UI resmi Supabase udah nggak dimaintain dan nggak nyambung sama Cloudscape).
+
+| Flow | Panggilan Supabase |
+|---|---|
+| Daftar | `auth.signUp({ email, password, options: { emailRedirectTo: <origin>/auth/callback } })` |
+| Konfirmasi email | link di email → `/auth/callback` → `exchangeCodeForSession` → `/` |
+| Login | `auth.signInWithPassword` |
+| Logout | `auth.signOut` |
+| Lupa password | `auth.resetPasswordForEmail(email, { redirectTo: <origin>/auth/callback?next=/reset-password })` |
+| Set password baru | `/reset-password` → `auth.updateUser({ password })` |
+
+- Konfirmasi email: **nyala** (default Supabase).
+- Email dikirim SMTP bawaan Supabase. Limitnya kecil (beberapa email per jam) dan cukup buat v1. Pasang SMTP sendiri (Resend dll.) kalau mulai kena limit.
+- Pesan error login sengaja generik ("Email atau password salah") biar nggak bocorin email mana yang terdaftar.
+
+## Infra & Config
+
+- **Supabase:** project baru `job-tracker`, region **Southeast Asia (Singapore)**. Data API ON, auto-expose tables OFF, Postgres default.
+- **Vercel:** import repo GitHub. Function region di-set `sin1` (Singapore) biar dekat sama DB.
+- **Env vars** (`.env.local` dan Vercel):
+  ```
+  NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+  CRON_SECRET=<string acak panjang>     # cuma di Vercel
+  ```
+- **Keep-alive:** project Supabase gratis di-pause setelah 7 hari tanpa aktivitas. `vercel.json` jadwalin Vercel Cron sehari sekali ke `GET /api/keepalive`. Route itu nolak request tanpa header `Authorization: Bearer $CRON_SECRET`, lalu manggil `rpc('ping')`. Route ini dikecualikan dari redirect login di `proxy.ts`. Kalau suatu saat tetap ke-pause, restore manual dari dashboard (data aman).
+- **Supabase → Auth → URL Configuration:** Site URL = domain Vercel. Redirect URLs = `http://localhost:3000/**` dan `https://<domain-vercel>/**`. Tanpa ini, link konfirmasi dan reset password bakal mental.
+
+## Commands
+
+```
+Dev:    npm run dev
+Build:  npm run build
+Lint:   npm run lint
+Test:   npm test            # vitest run
+Import: python scripts/import_xlsx.py "D:\Document\apply-for-a-job\Job Tracker.xlsx" <owner-user-uuid> > supabase/seed.sql
+```
+
+## Project Structure
+
+```
+app/
+  layout.tsx              → import global-styles + I18nProvider (locale id)
+  login/page.tsx          → form login + sign-up + link "lupa password"
+  forgot-password/page.tsx→ input email → kirim link reset
+  reset-password/page.tsx → input password baru
+  auth/callback/route.ts  → tukar code jadi sesi (konfirmasi email & reset), lalu redirect ke ?next
+  page.tsx                → server component: ambil semua lamaran milik user → <Tracker>
+  actions.ts              → server actions: create / update / delete
+  api/keepalive/route.ts  → target Vercel Cron, cek CRON_SECRET → rpc('ping')
+components/
+  Tracker.tsx             → 'use client': AppLayout + ringkasan status + Table + filter + tombol export
+  ApplicationModal.tsx    → 'use client': Modal + Form tambah/edit
+  Providers.tsx           → 'use client': I18nProvider locale id
+vercel.json               → jadwal cron harian keepalive
+lib/
+  constants.ts            → STATUSES, SOURCES
+  supabase.ts             → helper client server/browser
+  csv.ts                  → toCsv() (logic murni, ada test-nya)
+proxy.ts                  → redirect ke /login kalau belum login
+supabase/
+  schema.sql              → tabel + RLS (di atas)
+  seed.sql                → hasil import (di-generate, nggak diedit manual)
+scripts/import_xlsx.py    → Excel → seed.sql
+tests/                    → test vitest
+SPEC.md
+```
+
+## Code Style
+
+Server component ambil data, client component Cloudscape yang render, mutasi lewat server action:
+
+```tsx
+// components/Tracker.tsx
+'use client'
+export default function Tracker({ rows }: { rows: Application[] }) {
+  const { items, collectionProps, filterProps, paginationProps } = useCollection(rows, {
+    filtering: { filteringFunction: (r, text) => matches(r, text, status, source) },
+    sorting: { defaultState: { sortingColumn: { sortingField: 'applied_at' }, isDescending: true } },
+    pagination: { pageSize: 20 },
+  })
+  return (
+    <Table {...collectionProps} items={items} columnDefinitions={COLUMNS}
+      submitEdit={(row, col, value) => updateStatus(row.id, value as Status)}
+      filter={<TextFilter {...filterProps} filteringPlaceholder="Cari perusahaan / posisi" />}
+      pagination={<Pagination {...paginationProps} />} />
+  )
+}
+```
+
+```tsx
+// app/actions.ts
+'use server'
+export async function updateStatus(id: string, status: Status) {
+  if (!STATUSES.includes(status)) throw new Error('Status tidak valid')
+  const supabase = await createClient()
+  const { error } = await supabase.from('applications')
+    .update({ status, updated_at: new Date().toISOString() }).eq('id', id)
+  if (error) throw error
+  revalidatePath('/')
+}
+```
+
+- Nama tabel/kolom DB: `snake_case` bahasa Inggris. Label UI: bahasa Indonesia.
+- Semua lamaran milik user di-load sekali. Filter, search, sort, dan pagination jalan di client lewat `useCollection`. Datanya kecil (ratusan baris per user), jadi nggak perlu query per filter.
+- Export CSV dibikin di browser dari hasil filter yang lagi tampil (Blob + download), jadi nggak perlu API route.
+- Ganti status langsung di sel tabel (inline edit `submitEdit` + Select). Field lain diedit lewat Modal.
+- Warna status pakai `StatusIndicator`: Applied/Seen = info, Psikotes/Interview = in-progress, Offering/Diterima = success, Ditolak = error.
+- Pakai komponen dan design token Cloudscape. Nggak ada CSS custom kecuali kepepet.
+- Nggak ada abstraksi buat jaga-jaga. Satu halaman utama, satu file actions.
+
+## Testing Strategy
+
+- **Unit (Vitest):** `lib/csv.ts` (escape koma/kutip/newline, BOM UTF-8 buat Excel) dan validasi input di server action.
+- **DB:** RLS dicek manual pakai 2 akun. Tanpa login → 0 baris. User B nggak bisa baca, edit, atau hapus baris milik user A (termasuk lewat request langsung pakai id-nya).
+- **Manual smoke test** sebelum deploy: jalani user stories 1–8 di `npm run dev`, lalu sekali lagi di URL Vercel.
+- Nggak ada E2E framework di v1.
+
+## Boundaries
+
+- **Always:** validasi status/source di server action, `npm run build && npm test` lulus sebelum commit, secret cuma di `.env.local` / env Vercel.
+- **Ask first:** ubah schema DB, tambah dependency di luar Tech Stack, apa pun yang nyentuh project Supabase/Vercel (bikin project, set env, deploy).
+- **Never:** commit `.env*`, `supabase/seed.sql`, file `.xlsx`, atau service role key (repo-nya public), pakai service role key di kode app, matikan RLS.
+
+## Success Criteria
+
+1. Buka URL Vercel tanpa login → di-redirect ke `/login`. Query `applications` pakai publishable key tanpa sesi → ditolak (401).
+2. User baru bisa daftar, konfirmasi email, login, dan mulai dengan tabel kosong. User B nggak pernah lihat data user A.
+2b. Lupa password → email masuk → set password baru → bisa login pakai password baru, dan password lama ditolak.
+3. Setelah pemilik login, 13 lamaran dari Excel muncul dengan field yang sama (termasuk responsibilities/requirements).
+4. Tambah, edit (termasuk ganti status), dan hapus lamaran langsung kelihatan efeknya setelah reload.
+5. Filter status + platform + search bisa dikombinasi, dan jumlah hasil filter ditampilkan.
+6. Jumlah di ringkasan status = jumlah baris di tabel buat status itu.
+7. CSV hasil export kebuka di Excel dengan karakter yang benar (en dash, dll.) dan isinya sama kayak tabel yang sedang difilter, cuma data milik user yang login.
+8. Layout kepakai di lebar 375px (HP) tanpa scroll horizontal di level halaman (tabel boleh scroll sendiri).
+9. `npm run build`, `npm run lint`, `npm test` semuanya lulus.
+10. Semua UI pakai komponen Cloudscape dan teks bawaan komponennya berbahasa Indonesia.
+11. `GET /api/keepalive` tanpa secret → 401. Dengan secret → 200. Cron job kelihatan di Vercel → Settings → Cron Jobs dan log eksekusinya sukses.
+
+## Open Questions
+
+_Nggak ada._
+
+**Resolved**
+- Repo GitHub: `job-tracker`, **public**. Karena itu `supabase/seed.sql` dan file `.xlsx` (isinya data lamaran pribadi) masuk `.gitignore`.
+- Supabase: project baru (setting di Infra & Config). Vercel: akun udah ada, deploy lewat import repo GitHub.
+- Git: udah `git init -b main`.
+- Karakter `–` di Excel ternyata valid (U+2013), cuma salah tampil di terminal. Import nulis UTF-8 apa adanya.
+- Konfirmasi email: nyala. Reset password: masuk v1.
