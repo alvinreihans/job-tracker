@@ -86,8 +86,8 @@ Lihat [plan.md](plan.md) buat konteks. 👤 = butuh aksi kamu di dashboard.
   - Depends: T9
   - Size: S
 
-- [ ] **T11: Import data Excel** 👤
-  - Acceptance: `scripts/import_xlsx.py <xlsx> <user-uuid>` → `supabase/seed.sql`. Sheet Detail digabung per lamaran (baris kosong = lanjutan lamaran sebelumnya), string di-escape aman buat SQL. Kamu jalankan seed di SQL Editor.
+- [x] **T11: Import data Excel** 👤
+  - Acceptance: `scripts/import_xlsx.py <xlsx> <email>` → `supabase/seed.sql` (user_id dicari dari `auth.users` lewat email, baris yang udah ada di-skip, dan import dibatalkan kalau ada status/platform/tanggal yang nggak valid). Sheet Detail digabung per lamaran (baris kosong = lanjutan lamaran sebelumnya), string di-escape aman buat SQL. Kamu jalankan seed di SQL Editor.
   - Verify: 13 baris muncul di app dengan field + responsibilities/requirements sesuai Excel. `seed.sql` nggak ada di `git status`.
   - Files: `scripts/import_xlsx.py`
   - Depends: T6

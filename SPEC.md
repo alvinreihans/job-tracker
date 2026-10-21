@@ -128,7 +128,7 @@ Dev:    npm run dev
 Build:  npm run build
 Lint:   npm run lint
 Test:   npm test            # vitest run
-Import: python scripts/import_xlsx.py "D:\Document\apply-for-a-job\Job Tracker.xlsx" <owner-user-uuid> > supabase/seed.sql
+Import: python scripts/import_xlsx.py "D:\Document\apply-for-a-job\Job Tracker.xlsx" <email-akun> > supabase/seed.sql   # butuh: pip install openpyxl
 ```
 
 ## Project Structure
