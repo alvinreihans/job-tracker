@@ -79,7 +79,7 @@ Lihat [plan.md](plan.md) buat konteks. 👤 = butuh aksi kamu di dashboard.
 
 ## Phase 4: Data & deploy
 
-- [ ] **T10: Export CSV**
+- [x] **T10: Export CSV**
   - Acceptance: `lib/csv.ts` `toCsv(rows)` (BOM UTF-8, escape `,` `"` newline). Tombol "Export CSV" download hasil filter yang sedang tampil (semua halaman, bukan cuma halaman aktif).
   - Verify: test Vitest (koma, kutip, newline, en dash). Manual: buka file di Excel → karakter benar dan jumlah baris = counter filter.
   - Files: `lib/csv.ts`, `tests/csv.test.ts`, `components/Tracker.tsx`

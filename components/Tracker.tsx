@@ -26,7 +26,8 @@ import { deleteApplication } from "@/app/actions";
 import { createClient } from "@/lib/supabase/client";
 import { SOURCES, STATUSES, STATUS_INDICATOR, type Application } from "@/lib/constants";
 import { countByStatus, matches } from "@/lib/filter";
-import { formatDate } from "@/lib/format";
+import { toCsv } from "@/lib/csv";
+import { formatDate, todayIso } from "@/lib/format";
 import ApplicationDetail from "./ApplicationDetail";
 import ApplicationModal from "./ApplicationModal";
 
@@ -88,6 +89,20 @@ export default function Tracker({ email, rows }: { email: string; rows: Applicat
   function filterSource(value: string) {
     setSource(value);
     actions.setCurrentPage(1);
+  }
+
+  // Semua baris yang lolos filter (bukan cuma halaman aktif), urutan dari server: tanggal lamar terbaru.
+  function exportCsv() {
+    const text = filterProps.filteringText;
+    const blob = new Blob([toCsv(rows.filter((r) => matches(r, { text, status, source })))], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `job-tracker-${todayIso()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   function clearFilters() {
@@ -225,6 +240,11 @@ export default function Tracker({ email, rows }: { email: string; rows: Applicat
                   <Header
                     variant="h2"
                     counter={filtered ? `(${filteredItemsCount}/${rows.length})` : `(${rows.length})`}
+                    actions={
+                      <Button iconName="download" onClick={exportCsv}>
+                        Export CSV
+                      </Button>
+                    }
                   >
                     Daftar lamaran
                   </Header>
