@@ -15,9 +15,25 @@ import Textarea from "@cloudscape-design/components/textarea";
 import { saveApplication } from "@/app/actions";
 import { SOURCES, STATUSES, type Application } from "@/lib/constants";
 import { todayIso } from "@/lib/format";
-import type { ApplicationInput, FieldErrors } from "@/lib/validate";
+import { validateApplication, type ApplicationInput, type FieldErrors } from "@/lib/validate";
 
 type Draft = Record<keyof ApplicationInput, string>;
+type Key = keyof Draft;
+
+// Urutan tampil di form, dipakai buat cari field error pertama yang difokuskan.
+const FIELD_ORDER: Key[] = [
+  "company",
+  "position",
+  "applied_at",
+  "location",
+  "source",
+  "status",
+  "job_url",
+  "notes",
+  "responsibilities",
+  "requirements",
+];
+const FORM_ERROR = "Cek lagi isian yang ditandai.";
 
 // Pola Cloudscape: yang ditandai cuma field opsional (label + "- optional" miring), tanpa asterisk.
 const optional = (label: string) => (
@@ -58,39 +74,64 @@ export default function ApplicationModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [submitted, setSubmitted] = useState(false);
+  // Kontrol per field buat fokus ke error pertama. Objek dibuat sekali dan cuma dibaca di event handler.
+  const [controls] = useState<Partial<Record<Key, { focus(): void } | null>>>(() => ({}));
 
-  // Error field hilang begitu field-nya diubah. Kalau semua udah beres, error form ikut hilang.
-  const set = (key: keyof Draft) => (value: string) => {
+  function showErrors(errors: FieldErrors, message = FORM_ERROR) {
+    setError(message);
+    setFieldErrors(errors);
+    const first = FIELD_ORDER.find((k) => errors[k]);
+    if (first) controls[first]?.focus();
+  }
+
+  function updateFieldError(key: Key, message: string | undefined) {
+    const next = { ...fieldErrors };
+    if (message) next[key] = message;
+    else delete next[key];
+    setFieldErrors(next);
+    setError(Object.keys(next).length ? FORM_ERROR : "");
+  }
+
+  // Error field hilang begitu field-nya diubah.
+  const set = (key: Key) => (value: string) => {
     setDraft((d) => ({ ...d, [key]: value }));
-    if (!fieldErrors[key]) return;
-    const rest = { ...fieldErrors };
-    delete rest[key];
-    setFieldErrors(rest);
-    if (!Object.keys(rest).length) setError("");
+    if (fieldErrors[key]) updateFieldError(key, undefined);
   };
 
+  // Ref buat fokus ke error pertama, dan blur buat validasi ulang setelah submit pertama.
+  const bind = (key: Key) => ({
+    ref: (el: { focus(): void } | null) => {
+      controls[key] = el;
+    },
+    onBlur: () => {
+      if (submitted) updateFieldError(key, validateApplication(draft).errors?.[key]);
+    },
+  });
+
   async function save() {
+    setSubmitted(true);
+    // Validasi yang sama juga dijalankan di server (batas kepercayaan). Di sini biar feedback-nya instan.
+    const local = validateApplication(draft);
+    if (local.errors) return showErrors(local.errors);
+
     setSaving(true);
     setError("");
     const result = await saveApplication(draft, app?.id);
     setSaving(false);
-    if (!result.ok) {
-      setError(result.error);
-      setFieldErrors(result.fieldErrors ?? {});
-      return;
-    }
+    if (!result.ok) return showErrors(result.fieldErrors ?? {}, result.error);
     onSaved(result.id);
   }
 
-  const text = (key: keyof Draft, label: React.ReactNode, extra?: { type?: "url"; placeholder?: string }) => (
+  const text = (key: Key, label: React.ReactNode, extra?: { type?: "url"; placeholder?: string }) => (
     <FormField label={label} errorText={fieldErrors[key]}>
-      <Input value={draft[key]} onChange={({ detail }) => set(key)(detail.value)} {...extra} />
+      <Input {...bind(key)} value={draft[key]} onChange={({ detail }) => set(key)(detail.value)} {...extra} />
     </FormField>
   );
 
   const points = (key: "responsibilities" | "requirements", label: React.ReactNode) => (
     <FormField label={label} description="Copy-paste dari lowongan, satu poin per baris." errorText={fieldErrors[key]}>
-      <Textarea rows={8} value={draft[key]} onChange={({ detail }) => set(key)(detail.value)} />
+      <Textarea {...bind(key)} rows={8} value={draft[key]} onChange={({ detail }) => set(key)(detail.value)} />
     </FormField>
   );
 
@@ -120,6 +161,7 @@ export default function ApplicationModal({
             {text("position", "Posisi")}
             <FormField label="Tanggal lamar" errorText={fieldErrors.applied_at}>
               <DatePicker
+                {...bind("applied_at")}
                 value={draft.applied_at}
                 onChange={({ detail }) => set("applied_at")(detail.value)}
                 placeholder="YYYY/MM/DD"
@@ -128,6 +170,7 @@ export default function ApplicationModal({
             {text("location", optional("Lokasi"))}
             <FormField label="Melamar lewat" errorText={fieldErrors.source}>
               <Select
+                {...bind("source")}
                 selectedOption={draft.source ? { value: draft.source } : null}
                 onChange={({ detail }) => set("source")(detail.selectedOption.value ?? "")}
                 options={SOURCE_OPTIONS}
@@ -136,6 +179,7 @@ export default function ApplicationModal({
             </FormField>
             <FormField label="Status" errorText={fieldErrors.status}>
               <Select
+                {...bind("status")}
                 selectedOption={{ value: draft.status }}
                 onChange={({ detail }) => set("status")(detail.selectedOption.value ?? "")}
                 options={STATUS_OPTIONS}
@@ -144,7 +188,7 @@ export default function ApplicationModal({
           </ColumnLayout>
           {text("job_url", optional("Link lowongan"), { type: "url", placeholder: "https://..." })}
           <FormField label={optional("Catatan")} errorText={fieldErrors.notes}>
-            <Textarea rows={2} value={draft.notes} onChange={({ detail }) => set("notes")(detail.value)} />
+            <Textarea {...bind("notes")} rows={2} value={draft.notes} onChange={({ detail }) => set("notes")(detail.value)} />
           </FormField>
           <ColumnLayout columns={2}>
             {points("responsibilities", optional("Responsibilities"))}

@@ -36,7 +36,7 @@ Pengganti `Job Tracker.xlsx`: web app pribadi buat mencatat lamaran kerja, updat
 **Integrasi Cloudscape + Next.js**
 - Semua komponen Cloudscape cuma dipakai di file `'use client'`. Server component cuma ambil data, lalu oper ke client component.
 - `I18nProvider` dipasang di `components/Providers.tsx` (`'use client'`), lalu dibungkus di root layout.
-- **UI Cloudscape cuma di-render di client.** `Providers` baru render children setelah mount (`useSyncExternalStore`). Alasannya, Cloudscape ngukur DOM waktu render (`browserScrollbarSize`, `useVisualRefresh`), jadi HTML dari SSR selalu beda sama client dan bikin hydration mismatch. Data tetap diambil di server component dan mutasi tetap lewat server action. Konsekuensinya, first paint kosong sebentar sampai JS jalan. Nggak masalah buat app di balik login yang nggak butuh SEO.
+- **UI Cloudscape cuma di-render di client.** `Providers` baru render children setelah mount (`useSyncExternalStore`). Alasannya, Cloudscape ngukur DOM waktu render (`browserScrollbarSize`, `useVisualRefresh`), jadi HTML dari SSR selalu beda sama client dan bikin hydration mismatch. Data tetap diambil di server component dan mutasi tetap lewat server action. Sebelum mount, yang tampil teks "Memuat…" (`role="status"`, HTML polos), bukan layar kosong. Nggak masalah buat app di balik login yang nggak butuh SEO.
 - `transpilePackages` **nggak dibutuhkan**. Spike T1 udah buktiin Next 16.4 + Turbopack bisa build, dev, dan SSR Cloudscape tanpa config tambahan.
 - Warning `useLayoutEffect` waktu SSR emang dikenal tim Cloudscape dan aman diabaikan.
 
@@ -218,7 +218,7 @@ export async function deleteApplication(id: string): Promise<ActionResult> {
 - Detail per lamaran di `SplitPanel` (posisi **samping kanan**, otomatis pindah ke bawah di layar sempit; terbuka saat baris dipilih). Teks responsibilities/requirements disimpan apa adanya, dan baru dirapikan jadi poin waktu ditampilkan (`toPoints`), jadi data asli nggak pernah diubah.
 - Warna status pakai `StatusIndicator`: Applied/Seen = info, Psikotes/Interview = in-progress, Offering/Diterima = success, Ditolak = error.
 - Pakai komponen dan design token Cloudscape. Nggak ada CSS custom kecuali kepepet.
-- Form ikut pola Cloudscape (Single page create): **cuma field opsional yang ditandai**, pakai label + *- opsional* miring, tanpa asterisk. Tombol primary **nggak di-disable** walaupun field wajib belum diisi. Validasi jalan waktu submit, dan error tampil di field-nya.
+- Form ikut pola Cloudscape (Single page create): **cuma field opsional yang ditandai**, pakai label + *- opsional* miring, tanpa asterisk. Tombol primary **nggak di-disable** walaupun field wajib belum diisi. Validasi jalan waktu submit (validator yang sama dengan server, dijalankan di client biar instan), error tampil di field-nya, dan **fokus pindah ke field error pertama**. Setelah submit pertama, tiap field divalidasi ulang waktu ditinggalkan (blur), dan error-nya hilang begitu field diubah.
 - Render kondisional pakai `cond ? <X /> : null`, jangan `str && <X />`. String kosong `""` ikut jadi child dan bikin warning `key` di `SpaceBetween` Cloudscape.
 - Nggak ada abstraksi buat jaga-jaga. Satu halaman utama, satu file actions.
 
