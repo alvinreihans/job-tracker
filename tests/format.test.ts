@@ -1,5 +1,9 @@
 import { expect, test } from "vitest";
-import { formatDate, toPoints } from "../lib/format";
+import { formatDate, toPoints, todayIso } from "../lib/format";
+
+test("todayIso uses local date with zero padding", () => {
+  expect(todayIso(new Date(2026, 0, 5, 23, 59))).toBe("2026-01-05");
+});
 
 test("toPoints splits lines and drops blanks", () => {
   expect(toPoints("Satu\n\n  Dua  \r\nTiga\n")).toEqual(["Satu", "Dua", "Tiga"]);

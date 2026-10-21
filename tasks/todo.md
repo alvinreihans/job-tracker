@@ -58,14 +58,14 @@ Lihat [plan.md](plan.md) buat konteks. 👤 = butuh aksi kamu di dashboard.
   - Depends: T4
   - Size: S
 
-- [ ] **T7: Tambah / edit / hapus lamaran**
+- [x] **T7: Tambah / edit / hapus lamaran**
   - Acceptance: `app/actions.ts` (`createApplication`, `updateApplication`, `deleteApplication`) dengan validasi field wajib + enum. `components/ApplicationModal.tsx` (Form: semua field, Textarea buat responsibilities/requirements, DatePicker). Hapus pakai Modal konfirmasi. Error ditampilkan di Form/Flashbar.
   - Verify: test Vitest buat fungsi validasi (wajib kosong, status/source asing → ditolak). Manual: tambah → edit → hapus, dan cek setelah reload.
   - Files: `app/actions.ts`, `components/ApplicationModal.tsx`, `components/Tracker.tsx`, `tests/validate.test.ts`
   - Depends: T6
   - Size: M
 
-- [ ] **T8: Ganti status langsung di tabel**
+- [x] **T8: Ganti status langsung di tabel**
   - Acceptance: kolom Status bisa diedit inline (`submitEdit` + Select). Gagal simpan → nilai balik + pesan error.
   - Verify: manual. Ganti status → reload → tetap.
   - Files: `components/Tracker.tsx`, `app/actions.ts`

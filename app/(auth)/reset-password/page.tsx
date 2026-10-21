@@ -24,7 +24,10 @@ export default function ResetPasswordPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const mismatch = confirm !== "" && confirm !== password;
+  // Tombol simpan nggak di-disable (pola Cloudscape), error baru muncul setelah coba simpan.
+  const [submitted, setSubmitted] = useState(false);
+  const passwordError = submitted && !password ? "Password baru wajib diisi." : undefined;
+  const confirmError = (submitted || confirm !== "") && confirm !== password ? "Password nggak sama." : undefined;
 
   useEffect(() => {
     const supabase = createClient();
@@ -46,7 +49,8 @@ export default function ResetPasswordPage() {
   }, []);
 
   async function save() {
-    if (password !== confirm) return;
+    setSubmitted(true);
+    if (!password || password !== confirm) return;
     setLoading(true);
     setError("");
     const { error } = await createClient().auth.updateUser({ password });
@@ -79,15 +83,15 @@ export default function ResetPasswordPage() {
         header={<Header variant="h1">Bikin password baru</Header>}
         errorText={error}
         actions={
-          // Nonaktif sampai sesi terpasang, kalau nggak updateUser gagal "Auth session missing".
-          <Button variant="primary" loading={loading || hasSession === null} disabled={!password || password !== confirm}>
+          // Loading sampai sesi terpasang, kalau nggak updateUser gagal "Auth session missing".
+          <Button variant="primary" loading={loading || hasSession === null}>
             Simpan password
           </Button>
         }
       >
         <Container>
           <SpaceBetween size="m">
-            <FormField label="Password baru" constraintText="Minimal 6 karakter.">
+            <FormField label="Password baru" constraintText="Minimal 6 karakter." errorText={passwordError}>
               <Input
                 type={showPassword ? "text" : "password"}
                 autoComplete="new-password"
@@ -95,7 +99,7 @@ export default function ResetPasswordPage() {
                 onChange={({ detail }) => setPassword(detail.value)}
               />
             </FormField>
-            <FormField label="Ulangi password baru" errorText={mismatch ? "Password nggak sama." : undefined}>
+            <FormField label="Ulangi password baru" errorText={confirmError}>
               <Input
                 type={showPassword ? "text" : "password"}
                 autoComplete="new-password"

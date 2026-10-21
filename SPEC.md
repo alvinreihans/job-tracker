@@ -157,7 +157,8 @@ lib/
   redirect.ts             → safeNext() (ada test-nya)
   auth-errors.ts          → terjemahan error Supabase Auth
   csv.ts                  → toCsv() (logic murni, ada test-nya)
-  format.ts               → toPoints() (teks → daftar poin, buang baris kosong & bullet •, -, *, 1.) + formatDate() ("9 Okt 2026") (ada test-nya)
+  validate.ts             → validateApplication() + isStatus() (ada test-nya)
+  format.ts               → todayIso() + toPoints() (teks → daftar poin, buang baris kosong & bullet •, -, *, 1.) + formatDate() ("9 Okt 2026") (ada test-nya)
 proxy.ts                  → redirect ke /login kalau belum login
 supabase/
   schema.sql              → tabel + RLS (di atas)
@@ -192,16 +193,20 @@ export default function Tracker({ rows }: { rows: Application[] }) {
 ```tsx
 // app/actions.ts
 'use server'
-export async function updateStatus(id: string, status: Status) {
-  if (!STATUSES.includes(status)) throw new Error('Status tidak valid')
-  const supabase = await createClient()
-  const { error } = await supabase.from('applications')
-    .update({ status, updated_at: new Date().toISOString() }).eq('id', id)
-  if (error) throw error
-  revalidatePath('/')
+export async function updateStatus(id: string, status: unknown): Promise<ActionResult> {
+  const supabase = await client()                    // null kalau sesi habis
+  if (!supabase) return { ok: false, error: 'Sesi habis. Login lagi ya.' }
+  if (!isStatus(status)) return { ok: false, error: 'Status nggak valid.' }
+  const { data, error } = await supabase.from('applications')
+    .update({ status, updated_at: new Date().toISOString() }).eq('id', id).select('id').maybeSingle()
+  if (error) return { ok: false, error: 'Gagal ganti status. Coba lagi.' }
+  if (!data) return { ok: false, error: NOT_FOUND }  // RLS: baris orang lain = 0 baris
+  refresh()                                          // next/cache (Next 16)
+  return { ok: true, id }
 }
 ```
 
+- Server action **return** `{ ok, error, fieldErrors }`, bukan throw, karena di production Next menyensor pesan error dari server action. Validasi input di `lib/validate.ts` (batas kepercayaan) + check constraint di DB.
 - Nama tabel/kolom DB: `snake_case` bahasa Inggris. Label UI: bahasa Indonesia.
 - Semua lamaran milik user di-load sekali. Filter, search, sort, dan pagination jalan di client lewat `useCollection`. Datanya kecil (ratusan baris per user), jadi nggak perlu query per filter.
 - Export CSV dibikin di browser dari hasil filter yang lagi tampil (Blob + download), jadi nggak perlu API route.
@@ -209,6 +214,7 @@ export async function updateStatus(id: string, status: Status) {
 - Detail per lamaran di `SplitPanel` (posisi **samping kanan**, otomatis pindah ke bawah di layar sempit; terbuka saat baris dipilih). Teks responsibilities/requirements disimpan apa adanya, dan baru dirapikan jadi poin waktu ditampilkan (`toPoints`), jadi data asli nggak pernah diubah.
 - Warna status pakai `StatusIndicator`: Applied/Seen = info, Psikotes/Interview = in-progress, Offering/Diterima = success, Ditolak = error.
 - Pakai komponen dan design token Cloudscape. Nggak ada CSS custom kecuali kepepet.
+- Form ikut pola Cloudscape (Single page create): **cuma field opsional yang ditandai**, pakai label + *- opsional* miring, tanpa asterisk. Tombol primary **nggak di-disable** walaupun field wajib belum diisi. Validasi jalan waktu submit, dan error tampil di field-nya.
 - Render kondisional pakai `cond ? <X /> : null`, jangan `str && <X />`. String kosong `""` ikut jadi child dan bikin warning `key` di `SpaceBetween` Cloudscape.
 - Nggak ada abstraksi buat jaga-jaga. Satu halaman utama, satu file actions.
 
