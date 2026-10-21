@@ -25,36 +25,36 @@ Lihat [plan.md](plan.md) buat konteks. 👤 = butuh aksi kamu di dashboard.
 
 ## Phase 2: Auth
 
-- [ ] **T3: Supabase project + koneksi** 👤
-  - Acceptance: `supabase/schema.sql` ditulis (tabel + RLS + grant, sesuai SPEC). Kamu bikin project dan jalankan schema. `.env.local` terisi. `lib/supabase.ts` (client server + browser) siap. Redirect URL `http://localhost:3000/**` terdaftar.
+- [x] **T3: Supabase project + koneksi** 👤
+  - Acceptance: `supabase/schema.sql` ditulis (tabel + RLS + grant, sesuai SPEC). Kamu bikin project dan jalankan schema. `.env.local` terisi. `lib/supabase/{client,server}.ts` siap. Redirect URL `http://localhost:3000/**` terdaftar.
   - Verify: request REST `applications` pakai publishable key tanpa sesi → ditolak (401 permission denied, karena anon nggak di-grant). `rpc/ping` tanpa sesi → `1`.
-  - Files: `supabase/schema.sql`, `lib/supabase.ts`, `.env.local` (nggak di-commit)
+  - Files: `supabase/schema.sql`, `lib/supabase/client.ts`, `lib/supabase/server.ts`, `.env.local` (nggak di-commit)
   - Depends: T1
   - Size: S
 
-- [ ] **T4: Signup / login / logout + proteksi halaman**
+- [x] **T4: Signup / login / logout + proteksi halaman**
   - Acceptance: `/login` (Cloudscape Form) bisa daftar & login. Link konfirmasi → `/auth/callback` → `/`. Tombol logout di header. Belum login → semua halaman kecuali auth di-redirect ke `/login`. Error login generik.
   - Verify: manual. Daftar → email → klik → masuk. Logout → buka `/` → ke `/login`. `npm run build` lulus.
-  - Files: `app/login/page.tsx`, `app/auth/callback/route.ts`, `proxy.ts`, `app/page.tsx`
+  - Files: `app/(auth)/login/page.tsx`, `app/auth/callback/route.ts`, `proxy.ts`, `app/page.tsx`
   - Depends: T3
   - Size: M
 
-- [ ] **T5: Lupa password + reset password**
-  - Acceptance: `/forgot-password` kirim email reset. Link → `/auth/callback?next=/reset-password` → set password baru → masuk `/`.
-  - Verify: manual sesuai Success Criteria 2b (password lama ditolak, yang baru diterima).
-  - Files: `app/forgot-password/page.tsx`, `app/reset-password/page.tsx`, `app/login/page.tsx` (link)
+- [x] **T5: Lupa password + reset password**
+  - Acceptance: `/forgot-password` kirim email reset (flow implicit). Link → `/reset-password#access_token…` → set password baru → masuk `/`. Jalan walaupun link dibuka di browser/HP lain.
+  - Verify: manual sesuai Success Criteria 2b (password lama ditolak, yang baru diterima). Plus: link dibuka di browser lain → form muncul; link dipakai ulang atau `/reset-password` dibuka langsung → "Link reset nggak berlaku".
+  - Files: `app/(auth)/forgot-password/page.tsx`, `app/(auth)/reset-password/page.tsx`
   - Depends: T4
   - Size: S
 
 ### Checkpoint B: auth end-to-end
-- [ ] Signup, konfirmasi, login, logout, reset jalan di lokal. Build/lint/test lulus. Review.
+- [x] Signup, konfirmasi, login, logout, reset jalan di lokal. Build/lint/test lulus. Review.
 
 ## Phase 3: Fitur inti
 
-- [ ] **T6: Tabel lamaran (read)**
-  - Acceptance: `lib/constants.ts` (STATUSES, SOURCES, tipe `Application`). `app/page.tsx` ambil lamaran user → `components/Tracker.tsx` (AppLayout + Table + sort default `applied_at` desc + pagination 20 + empty state). Status tampil pakai `StatusIndicator`.
-  - Verify: insert 1 baris lewat SQL Editor (pakai `user_id` kamu) → muncul di tabel. Akun lain (nanti di T12) nggak lihat baris itu.
-  - Files: `lib/constants.ts`, `app/page.tsx`, `components/Tracker.tsx`
+- [ ] **T6: Tabel lamaran + split panel detail (read)**
+  - Acceptance: `lib/constants.ts` (STATUSES, SOURCES, tipe `Application`). `app/page.tsx` ambil lamaran user → `components/Tracker.tsx` (AppLayout + Table + sort default `applied_at` desc + pagination 20 + empty state). Status tampil pakai `StatusIndicator`. Pilih baris → `SplitPanel` berisi `ApplicationDetail` (info + Responsibilities/Requirements jadi poin lewat `toPoints`).
+  - Verify: test Vitest `toPoints` (baris kosong, bullet `•`/`-`/`*`/`1.`, spasi). Manual: insert 1 baris lewat SQL Editor (pakai `user_id` kamu) → muncul di tabel, klik → detail tampil rapi. Akun lain (nanti di T12) nggak lihat baris itu.
+  - Files: `lib/constants.ts`, `lib/points.ts`, `tests/points.test.ts`, `app/page.tsx`, `components/Tracker.tsx`, `components/ApplicationDetail.tsx`
   - Depends: T4
   - Size: S
 

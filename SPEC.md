@@ -10,7 +10,8 @@ Pengganti `Job Tracker.xlsx`: web app pribadi buat mencatat lamaran kerja, updat
 1. Daftar (sign-up) pakai email + password, konfirmasi lewat email, login, dan logout. Tanpa login, nggak ada halaman/data yang bisa diakses.
 1b. Lupa password: masukkan email → dapat link reset → set password baru → langsung login.
 2. Lihat semua lamaran di tabel, urut dari tanggal lamar terbaru.
-3. Tambah lamaran baru: perusahaan, posisi, tanggal lamar, link lowongan, lokasi, platform, status, catatan, responsibilities, requirements.
+2b. Klik satu baris → **split panel** detail (Cloudscape `SplitPanel`) di halaman yang sama: info lengkap + Responsibilities & Requirements sebagai daftar poin + tombol Edit.
+3. Tambah lamaran baru: perusahaan, posisi, tanggal lamar, link lowongan, lokasi, platform, status, catatan, responsibilities, requirements. Responsibilities/Requirements diisi lewat `Textarea` dengan copy-paste dari lowongan, satu poin per baris.
 4. Edit lamaran, terutama ganti status dengan cepat.
 5. Hapus lamaran (pakai konfirmasi).
 6. Filter by status dan platform, plus search nama perusahaan/posisi.
@@ -88,16 +89,24 @@ Backend-nya pakai Supabase Auth bawaan, jadi nggak bikin sistem auth sendiri. UI
 
 | Flow | Panggilan Supabase |
 |---|---|
-| Daftar | `auth.signUp({ email, password, options: { emailRedirectTo: <origin>/auth/callback } })` |
-| Konfirmasi email | link di email → `/auth/callback` → `exchangeCodeForSession` → `/` |
+| Daftar | `auth.signUp({ email, password, options: { emailRedirectTo: <origin>/auth/callback?next=/ } })` |
+| Konfirmasi email | link di email → `/auth/callback?code` → `exchangeCodeForSession` → `/` |
 | Login | `auth.signInWithPassword` |
 | Logout | `auth.signOut` |
-| Lupa password | `auth.resetPasswordForEmail(email, { redirectTo: <origin>/auth/callback?next=/reset-password })` |
-| Set password baru | `/reset-password` → `auth.updateUser({ password })` |
+| Lupa password | client `supabase-js` terpisah dengan `flowType: "implicit", persistSession: false` → `resetPasswordForEmail(email, { redirectTo: <origin>/reset-password })` |
+| Set password baru | `/reset-password#access_token&refresh_token` → `setSession` → hapus hash → `auth.updateUser({ password })` |
 
+- Template email tetap bawaan, karena template baru bisa diedit kalau pakai custom SMTP. Polanya sama kayak `money-tracker` (commit `677e7f0`).
+- **Signup = PKCE (`code`).** Link konfirmasi cuma bisa ditukar jadi sesi di browser yang dipakai buat daftar. Kalau dibuka di browser lain, `/login?error=link` minta user login aja, karena konfirmasi email-nya tetap tercatat di Supabase.
+- **Reset password = implicit.** Link PKCE butuh cookie code verifier dari browser yang minta reset, jadi bakal gagal kalau dibuka di app email atau HP. Flow implicit bawa token di hash URL (nggak terkirim ke server), lalu `/reset-password` pasang sesinya sendiri.
+  - `/reset-password` harus **publik** di `proxy.ts`. Kalau nggak, request tanpa cookie di-redirect ke `/login` dan hash-nya ikut kebawa.
+  - Tombol simpan nonaktif selama sesi belum terpasang, karena `updateUser` bakal gagal "Auth session missing".
+  - Tanpa token dan tanpa sesi (link kedaluwarsa atau halaman dibuka langsung) → tampil "Link reset nggak berlaku" + tombol minta link baru.
+- **Upgrade path (kalau udah pasang custom SMTP):** edit template ke `token_hash` + `verifyOtp` di `/auth/callback`. Signup juga jadi aman lintas browser, dan client implicit nggak perlu lagi.
+- `?next=` divalidasi `safeNext()` (cuma path relatif) biar nggak bisa dipakai buat open redirect.
 - Konfirmasi email: **nyala** (default Supabase).
-- Email dikirim SMTP bawaan Supabase. Limitnya kecil (beberapa email per jam) dan cukup buat v1. Pasang SMTP sendiri (Resend dll.) kalau mulai kena limit.
-- Pesan error login sengaja generik ("Email atau password salah") biar nggak bocorin email mana yang terdaftar.
+- Email dikirim SMTP bawaan Supabase. Limitnya kecil (beberapa email per jam), dan **cuma ngirim ke alamat anggota tim project Supabase**. Orang lain yang daftar nggak bakal dapat email konfirmasi atau reset. Lihat Open Questions.
+- Pesan error login sengaja generik ("Email atau password salah") biar nggak bocorin email mana yang terdaftar. Halaman lupa password juga selalu bilang "kalau email itu terdaftar, link udah dikirim".
 
 ## Infra & Config
 
@@ -127,22 +136,28 @@ Import: python scripts/import_xlsx.py "D:\Document\apply-for-a-job\Job Tracker.x
 ```
 app/
   layout.tsx              → import global-styles + I18nProvider (locale id)
-  login/page.tsx          → form login + sign-up + link "lupa password"
-  forgot-password/page.tsx→ input email → kirim link reset
-  reset-password/page.tsx → input password baru
-  auth/callback/route.ts  → tukar code jadi sesi (konfirmasi email & reset), lalu redirect ke ?next
+  (auth)/layout.tsx       → wrapper tengah buat halaman auth
+  (auth)/login/page.tsx   → form login + sign-up + link "lupa password"
+  (auth)/forgot-password/ → input email → kirim link reset
+  (auth)/reset-password/  → input password baru
+  auth/callback/route.ts  → exchangeCodeForSession buat konfirmasi email & reset, lalu redirect ke ?next
   page.tsx                → server component: ambil semua lamaran milik user → <Tracker>
   actions.ts              → server actions: create / update / delete
   api/keepalive/route.ts  → target Vercel Cron, cek CRON_SECRET → rpc('ping')
 components/
-  Tracker.tsx             → 'use client': AppLayout + ringkasan status + Table + filter + tombol export
+  Tracker.tsx             → 'use client': AppLayout + ringkasan status + Table + filter + tombol export + SplitPanel
+  ApplicationDetail.tsx   → 'use client': isi split panel (info + daftar poin)
   ApplicationModal.tsx    → 'use client': Modal + Form tambah/edit
   Providers.tsx           → 'use client': I18nProvider locale id
 vercel.json               → jadwal cron harian keepalive
 lib/
   constants.ts            → STATUSES, SOURCES
-  supabase.ts             → helper client server/browser
+  supabase/client.ts      → client browser
+  supabase/server.ts      → client server (cookies)
+  redirect.ts             → safeNext() (ada test-nya)
+  auth-errors.ts          → terjemahan error Supabase Auth
   csv.ts                  → toCsv() (logic murni, ada test-nya)
+  points.ts               → toPoints(): teks → daftar poin, buang baris kosong & bullet (•, -, *, 1.) (ada test-nya)
 proxy.ts                  → redirect ke /login kalau belum login
 supabase/
   schema.sql              → tabel + RLS (di atas)
@@ -191,8 +206,10 @@ export async function updateStatus(id: string, status: Status) {
 - Semua lamaran milik user di-load sekali. Filter, search, sort, dan pagination jalan di client lewat `useCollection`. Datanya kecil (ratusan baris per user), jadi nggak perlu query per filter.
 - Export CSV dibikin di browser dari hasil filter yang lagi tampil (Blob + download), jadi nggak perlu API route.
 - Ganti status langsung di sel tabel (inline edit `submitEdit` + Select). Field lain diedit lewat Modal.
+- Detail per lamaran di `SplitPanel` (posisi bawah, terbuka saat baris dipilih). Teks responsibilities/requirements disimpan apa adanya, dan baru dirapikan jadi poin waktu ditampilkan (`toPoints`), jadi data asli nggak pernah diubah.
 - Warna status pakai `StatusIndicator`: Applied/Seen = info, Psikotes/Interview = in-progress, Offering/Diterima = success, Ditolak = error.
 - Pakai komponen dan design token Cloudscape. Nggak ada CSS custom kecuali kepepet.
+- Render kondisional pakai `cond ? <X /> : null`, jangan `str && <X />`. String kosong `""` ikut jadi child dan bikin warning `key` di `SpaceBetween` Cloudscape.
 - Nggak ada abstraksi buat jaga-jaga. Satu halaman utama, satu file actions.
 
 ## Testing Strategy
@@ -225,7 +242,7 @@ export async function updateStatus(id: string, status: Status) {
 
 ## Open Questions
 
-_Nggak ada._
+1. **Signup buat orang lain butuh custom SMTP.** SMTP bawaan cuma ngirim ke anggota tim project, jadi user lain nggak bisa konfirmasi email atau reset password. Opsinya: (a) pasang Resend/Brevo (gratis) sebelum app dibagikan ke orang lain, sekaligus pindah ke `token_hash`; (b) matikan konfirmasi email, tapi reset password tetap nggak jalan buat mereka. Keputusan paling telat di T12, sebelum app dibagikan.
 
 **Resolved**
 - Repo GitHub: `job-tracker`, **public**. Karena itu `supabase/seed.sql` dan file `.xlsx` (isinya data lamaran pribadi) masuk `.gitignore`.
