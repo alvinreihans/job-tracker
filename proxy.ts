@@ -2,7 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // /reset-password publik: link reset datang tanpa cookie sesi (token ada di hash), halamannya cek sendiri.
-const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/auth/"];
+// /api/keepalive publik: dipanggil Vercel Cron tanpa sesi, dijaga CRON_SECRET di route-nya.
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/auth/", "/api/keepalive"];
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });

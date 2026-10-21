@@ -101,6 +101,7 @@ Lihat [plan.md](plan.md) buat konteks. 👤 = butuh aksi kamu di dashboard.
   - Size: S
 
 - [ ] **T13: Keep-alive Vercel Cron** 👤
+  - Status: kode selesai dan dites lokal (401/401/200). Tinggal set `CRON_SECRET` di Vercel dan cek di production.
   - Acceptance: `app/api/keepalive/route.ts` (401 tanpa `Bearer $CRON_SECRET`, 200 + `rpc('ping')` kalau valid). `vercel.json` cron harian. `proxy.ts` mengecualikan `/api/keepalive`. Kamu set `CRON_SECRET` di env Vercel.
   - Verify: `curl` production tanpa header → 401, dengan header → 200. Vercel → Cron Jobs → "Run" manual → log sukses.
   - Files: `app/api/keepalive/route.ts`, `vercel.json`, `proxy.ts`
