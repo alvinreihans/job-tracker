@@ -10,7 +10,7 @@ Pengganti `Job Tracker.xlsx`: web app pribadi buat mencatat lamaran kerja, updat
 1. Daftar (sign-up) pakai email + password, konfirmasi lewat email, login, dan logout. Tanpa login, nggak ada halaman/data yang bisa diakses.
 1b. Lupa password: masukkan email → dapat link reset → set password baru → langsung login.
 2. Lihat semua lamaran di tabel, urut dari tanggal lamar terbaru.
-2b. Klik satu baris → **split panel** detail (Cloudscape `SplitPanel`) di halaman yang sama: info lengkap + Responsibilities & Requirements sebagai daftar poin + tombol Edit.
+2b. Klik satu baris → **split panel** detail (Cloudscape `SplitPanel`, di sebelah kanan) di halaman yang sama: info lengkap + Responsibilities & Requirements sebagai daftar poin + tombol Edit.
 3. Tambah lamaran baru: perusahaan, posisi, tanggal lamar, link lowongan, lokasi, platform, status, catatan, responsibilities, requirements. Responsibilities/Requirements diisi lewat `Textarea` dengan copy-paste dari lowongan, satu poin per baris.
 4. Edit lamaran, terutama ganti status dengan cepat.
 5. Hapus lamaran (pakai konfirmasi).
@@ -157,7 +157,7 @@ lib/
   redirect.ts             → safeNext() (ada test-nya)
   auth-errors.ts          → terjemahan error Supabase Auth
   csv.ts                  → toCsv() (logic murni, ada test-nya)
-  points.ts               → toPoints(): teks → daftar poin, buang baris kosong & bullet (•, -, *, 1.) (ada test-nya)
+  format.ts               → toPoints() (teks → daftar poin, buang baris kosong & bullet •, -, *, 1.) + formatDate() ("9 Okt 2026") (ada test-nya)
 proxy.ts                  → redirect ke /login kalau belum login
 supabase/
   schema.sql              → tabel + RLS (di atas)
@@ -206,7 +206,7 @@ export async function updateStatus(id: string, status: Status) {
 - Semua lamaran milik user di-load sekali. Filter, search, sort, dan pagination jalan di client lewat `useCollection`. Datanya kecil (ratusan baris per user), jadi nggak perlu query per filter.
 - Export CSV dibikin di browser dari hasil filter yang lagi tampil (Blob + download), jadi nggak perlu API route.
 - Ganti status langsung di sel tabel (inline edit `submitEdit` + Select). Field lain diedit lewat Modal.
-- Detail per lamaran di `SplitPanel` (posisi bawah, terbuka saat baris dipilih). Teks responsibilities/requirements disimpan apa adanya, dan baru dirapikan jadi poin waktu ditampilkan (`toPoints`), jadi data asli nggak pernah diubah.
+- Detail per lamaran di `SplitPanel` (posisi **samping kanan**, otomatis pindah ke bawah di layar sempit; terbuka saat baris dipilih). Teks responsibilities/requirements disimpan apa adanya, dan baru dirapikan jadi poin waktu ditampilkan (`toPoints`), jadi data asli nggak pernah diubah.
 - Warna status pakai `StatusIndicator`: Applied/Seen = info, Psikotes/Interview = in-progress, Offering/Diterima = success, Ditolak = error.
 - Pakai komponen dan design token Cloudscape. Nggak ada CSS custom kecuali kepepet.
 - Render kondisional pakai `cond ? <X /> : null`, jangan `str && <X />`. String kosong `""` ikut jadi child dan bikin warning `key` di `SpaceBetween` Cloudscape.

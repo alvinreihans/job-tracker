@@ -51,10 +51,10 @@ Lihat [plan.md](plan.md) buat konteks. 👤 = butuh aksi kamu di dashboard.
 
 ## Phase 3: Fitur inti
 
-- [ ] **T6: Tabel lamaran + split panel detail (read)**
+- [x] **T6: Tabel lamaran + split panel detail (read)**
   - Acceptance: `lib/constants.ts` (STATUSES, SOURCES, tipe `Application`). `app/page.tsx` ambil lamaran user → `components/Tracker.tsx` (AppLayout + Table + sort default `applied_at` desc + pagination 20 + empty state). Status tampil pakai `StatusIndicator`. Pilih baris → `SplitPanel` berisi `ApplicationDetail` (info + Responsibilities/Requirements jadi poin lewat `toPoints`).
-  - Verify: test Vitest `toPoints` (baris kosong, bullet `•`/`-`/`*`/`1.`, spasi). Manual: insert 1 baris lewat SQL Editor (pakai `user_id` kamu) → muncul di tabel, klik → detail tampil rapi. Akun lain (nanti di T12) nggak lihat baris itu.
-  - Files: `lib/constants.ts`, `lib/points.ts`, `tests/points.test.ts`, `app/page.tsx`, `components/Tracker.tsx`, `components/ApplicationDetail.tsx`
+  - Verify: test Vitest `toPoints` + `formatDate` (baris kosong, bullet `•`/`-`/`*`/`1.`, spasi). Manual: insert 1 baris lewat SQL Editor (pakai `user_id` kamu) → muncul di tabel, klik → detail tampil rapi. Akun lain (nanti di T12) nggak lihat baris itu.
+  - Files: `lib/constants.ts`, `lib/format.ts`, `tests/format.test.ts`, `app/page.tsx`, `components/Tracker.tsx`, `components/ApplicationDetail.tsx`
   - Depends: T4
   - Size: S
 
