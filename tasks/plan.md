@@ -19,7 +19,7 @@ T3 Supabase project + env (👤) ──► T4 Auth: signup/login/logout ──�
                                           │
                      ┌────────────┬───────┴──────┬──────────────┐
                      ▼            ▼              ▼              ▼
-              T7 Tambah/edit/  T8 Inline     T9 Filter +     T11 Import Excel
+              T7 Tambah/edit/  T8 (batal)    T9 Filter +     T11 Import Excel
                  hapus          status          ringkasan
                                                  │
                                                  ▼

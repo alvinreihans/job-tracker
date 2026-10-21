@@ -10,11 +10,13 @@ import StatusIndicator from "@cloudscape-design/components/status-indicator";
 import { STATUS_INDICATOR, type Application } from "@/lib/constants";
 import { formatDate, toPoints } from "@/lib/format";
 
-export default function ApplicationDetail({ app }: { app: Application }) {
+export default function ApplicationDetail({ app, actions }: { app: Application; actions?: React.ReactNode }) {
   return (
     <SpaceBetween size="l">
+      {actions}
       <KeyValuePairs
         columns={3}
+        minColumnWidth={150}
         items={[
           { label: "Posisi", value: app.position },
           { label: "Tanggal lamar", value: formatDate(app.applied_at) },
@@ -36,7 +38,7 @@ export default function ApplicationDetail({ app }: { app: Application }) {
           { label: "Catatan", value: <span style={{ whiteSpace: "pre-wrap" }}>{app.notes || "-"}</span> },
         ]}
       />
-      <ColumnLayout columns={2} variant="text-grid">
+      <ColumnLayout columns={2} minColumnWidth={240}>
         <Points title="Responsibilities" text={app.responsibilities} />
         <Points title="Requirements" text={app.requirements} />
       </ColumnLayout>

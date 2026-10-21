@@ -26,7 +26,8 @@ export default function ForgotPasswordPage() {
     // dari browser yang minta, jadi gagal kalau dibuka di app email atau perangkat lain. Implicit
     // bawa token di hash URL, lalu /reset-password yang pasang sesinya. (Pola token_hash butuh SMTP sendiri.)
     const implicit = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
-      auth: { flowType: "implicit", persistSession: false },
+      // storageKey sendiri biar nggak bentrok sama client @supabase/ssr ("Multiple GoTrueClient instances").
+      auth: { flowType: "implicit", persistSession: false, storageKey: "sb-implicit-reset" },
     });
     const { error } = await implicit.auth.resetPasswordForEmail(email, {
       redirectTo: `${location.origin}/reset-password`,

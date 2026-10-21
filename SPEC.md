@@ -12,7 +12,7 @@ Pengganti `Job Tracker.xlsx`: web app pribadi buat mencatat lamaran kerja, updat
 2. Lihat semua lamaran di tabel, urut dari tanggal lamar terbaru.
 2b. Klik satu baris → **split panel** detail (Cloudscape `SplitPanel`, di sebelah kanan) di halaman yang sama: info lengkap + Responsibilities & Requirements sebagai daftar poin + tombol Edit.
 3. Tambah lamaran baru: perusahaan, posisi, tanggal lamar, link lowongan, lokasi, platform, status, catatan, responsibilities, requirements. Responsibilities/Requirements diisi lewat `Textarea` dengan copy-paste dari lowongan, satu poin per baris.
-4. Edit lamaran, terutama ganti status dengan cepat.
+4. Edit lamaran (termasuk ganti status) lewat tombol **Edit** di split panel detail.
 5. Hapus lamaran (pakai konfirmasi).
 6. Filter by status dan platform, plus search nama perusahaan/posisi.
 7. Lihat ringkasan jumlah lamaran per status.
@@ -157,6 +157,7 @@ lib/
   redirect.ts             → safeNext() (ada test-nya)
   auth-errors.ts          → terjemahan error Supabase Auth
   csv.ts                  → toCsv() (logic murni, ada test-nya)
+  filter.ts               → matches() (search + status + platform) + countByStatus() (ada test-nya)
   validate.ts             → validateApplication() + isStatus() (ada test-nya)
   format.ts               → todayIso() + toPoints() (teks → daftar poin, buang baris kosong & bullet •, -, *, 1.) + formatDate() ("9 Okt 2026") (ada test-nya)
 proxy.ts                  → redirect ke /login kalau belum login
@@ -177,13 +178,13 @@ Server component ambil data, client component Cloudscape yang render, mutasi lew
 'use client'
 export default function Tracker({ rows }: { rows: Application[] }) {
   const { items, collectionProps, filterProps, paginationProps } = useCollection(rows, {
-    filtering: { filteringFunction: (r, text) => matches(r, text, status, source) },
+    filtering: { filteringFunction: (r, text) => matches(r, { text, status, source }) },
     sorting: { defaultState: { sortingColumn: { sortingField: 'applied_at' }, isDescending: true } },
     pagination: { pageSize: 20 },
   })
   return (
     <Table {...collectionProps} items={items} columnDefinitions={COLUMNS}
-      submitEdit={(row, col, value) => updateStatus(row.id, value as Status)}
+      onRowClick={({ detail }) => setSelectedId(detail.item.id)}
       filter={<TextFilter {...filterProps} filteringPlaceholder="Cari perusahaan / posisi" />}
       pagination={<Pagination {...paginationProps} />} />
   )
@@ -193,13 +194,12 @@ export default function Tracker({ rows }: { rows: Application[] }) {
 ```tsx
 // app/actions.ts
 'use server'
-export async function updateStatus(id: string, status: unknown): Promise<ActionResult> {
+export async function deleteApplication(id: string): Promise<ActionResult> {
   const supabase = await client()                    // null kalau sesi habis
   if (!supabase) return { ok: false, error: 'Sesi habis. Login lagi ya.' }
-  if (!isStatus(status)) return { ok: false, error: 'Status nggak valid.' }
   const { data, error } = await supabase.from('applications')
-    .update({ status, updated_at: new Date().toISOString() }).eq('id', id).select('id').maybeSingle()
-  if (error) return { ok: false, error: 'Gagal ganti status. Coba lagi.' }
+    .delete().eq('id', id).select('id').maybeSingle()
+  if (error) return { ok: false, error: 'Gagal menghapus. Coba lagi.' }
   if (!data) return { ok: false, error: NOT_FOUND }  // RLS: baris orang lain = 0 baris
   refresh()                                          // next/cache (Next 16)
   return { ok: true, id }
@@ -208,9 +208,13 @@ export async function updateStatus(id: string, status: unknown): Promise<ActionR
 
 - Server action **return** `{ ok, error, fieldErrors }`, bukan throw, karena di production Next menyensor pesan error dari server action. Validasi input di `lib/validate.ts` (batas kepercayaan) + check constraint di DB.
 - Nama tabel/kolom DB: `snake_case` bahasa Inggris. Label UI: bahasa Indonesia.
+- **Struktur halaman utama (pola Cloudscape):** `AppLayout` → `ContentLayout` dengan `Header` h1 "Lamaran" + aksi **Tambah lamaran**. Di bawahnya Container **Ringkasan status** (angka per status, klik = filter tabel ke status itu), lalu Table **Daftar lamaran** (`variant="container"`, `stickyColumns={{ first: 1 }}` biar nama perusahaan tetap kelihatan waktu scroll samping di HP).
+- **Responsif:** jumlah kolom ditentukan Cloudscape (`KeyValuePairs`/`ColumnLayout` pakai `minColumnWidth`, filter pakai `Grid` dengan breakpoint). Nggak ada media query sendiri.
+- **Split panel:** posisi default samping (`onSplitPanelPreferencesChange` dipasang, user bisa pindah ke bawah lewat ikon ⚙). Di HP otomatis di bawah. Tombol Edit/Hapus ada di **isi** panel, bukan `headerActions`, karena `headerActions` nggak bisa wrap dan bikin judul kegencet di panel samping.
+- **Cek layout** di 375 (HP), 768/1024 (tablet), dan 1366 (desktop) pakai emulasi perangkat (DevTools Device Mode). Iframe atau jendela headless kecil nggak akurat.
 - Semua lamaran milik user di-load sekali. Filter, search, sort, dan pagination jalan di client lewat `useCollection`. Datanya kecil (ratusan baris per user), jadi nggak perlu query per filter.
 - Export CSV dibikin di browser dari hasil filter yang lagi tampil (Blob + download), jadi nggak perlu API route.
-- Ganti status langsung di sel tabel (inline edit `submitEdit` + Select). Field lain diedit lewat Modal.
+- Semua perubahan, termasuk status, lewat Modal **Edit**. Header split panel cuma berisi Edit + Hapus, biar judul nggak kegencet di panel samping yang sempit. Nggak pakai inline edit di tabel, karena klik sel ikut memicu `onRowClick` dan buka detail.
 - Detail per lamaran di `SplitPanel` (posisi **samping kanan**, otomatis pindah ke bawah di layar sempit; terbuka saat baris dipilih). Teks responsibilities/requirements disimpan apa adanya, dan baru dirapikan jadi poin waktu ditampilkan (`toPoints`), jadi data asli nggak pernah diubah.
 - Warna status pakai `StatusIndicator`: Applied/Seen = info, Psikotes/Interview = in-progress, Offering/Diterima = success, Ditolak = error.
 - Pakai komponen dan design token Cloudscape. Nggak ada CSS custom kecuali kepepet.

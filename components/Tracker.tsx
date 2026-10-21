@@ -3,11 +3,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCollection } from "@cloudscape-design/collection-hooks";
-import AppLayout from "@cloudscape-design/components/app-layout";
+import AppLayout, { type AppLayoutProps } from "@cloudscape-design/components/app-layout";
 import Box from "@cloudscape-design/components/box";
 import Button from "@cloudscape-design/components/button";
+import Container from "@cloudscape-design/components/container";
+import ContentLayout from "@cloudscape-design/components/content-layout";
 import Flashbar, { type FlashbarProps } from "@cloudscape-design/components/flashbar";
+import Grid from "@cloudscape-design/components/grid";
 import Header from "@cloudscape-design/components/header";
+import KeyValuePairs from "@cloudscape-design/components/key-value-pairs";
+import Link from "@cloudscape-design/components/link";
 import Modal from "@cloudscape-design/components/modal";
 import Pagination from "@cloudscape-design/components/pagination";
 import Select from "@cloudscape-design/components/select";
@@ -15,15 +20,20 @@ import SpaceBetween from "@cloudscape-design/components/space-between";
 import SplitPanel from "@cloudscape-design/components/split-panel";
 import StatusIndicator from "@cloudscape-design/components/status-indicator";
 import Table, { type TableProps } from "@cloudscape-design/components/table";
+import TextFilter from "@cloudscape-design/components/text-filter";
 import TopNavigation from "@cloudscape-design/components/top-navigation";
-import { deleteApplication, updateStatus } from "@/app/actions";
+import { deleteApplication } from "@/app/actions";
 import { createClient } from "@/lib/supabase/client";
-import { STATUSES, STATUS_INDICATOR, type Application } from "@/lib/constants";
+import { SOURCES, STATUSES, STATUS_INDICATOR, type Application } from "@/lib/constants";
+import { countByStatus, matches } from "@/lib/filter";
 import { formatDate } from "@/lib/format";
 import ApplicationDetail from "./ApplicationDetail";
 import ApplicationModal from "./ApplicationModal";
 
-const STATUS_OPTIONS = STATUSES.map((value) => ({ value }));
+const ALL_STATUS = { value: "", label: "Semua status" };
+const ALL_SOURCE = { value: "", label: "Semua platform" };
+const STATUS_FILTER_OPTIONS = [ALL_STATUS, ...STATUSES.map((value) => ({ value }))];
+const SOURCE_FILTER_OPTIONS = [ALL_SOURCE, ...SOURCES.map((value) => ({ value }))];
 
 const COLUMNS: TableProps.ColumnDefinition<Application>[] = [
   { id: "company", header: "Perusahaan", cell: (r) => r.company, sortingField: "company" },
@@ -36,19 +46,6 @@ const COLUMNS: TableProps.ColumnDefinition<Application>[] = [
     header: "Status",
     cell: (r) => <StatusIndicator type={STATUS_INDICATOR[r.status]}>{r.status}</StatusIndicator>,
     sortingField: "status",
-    editConfig: {
-      ariaLabel: "Status",
-      editIconAriaLabel: "bisa diedit",
-      editingCell: (item, { currentValue, setValue }) => (
-        <Select
-          autoFocus
-          expandToViewport
-          selectedOption={{ value: currentValue ?? item.status }}
-          onChange={({ detail }) => setValue(detail.selectedOption.value)}
-          options={STATUS_OPTIONS}
-        />
-      ),
-    },
   },
 ];
 
@@ -61,11 +58,43 @@ export default function Tracker({ email, rows }: { email: string; rows: Applicat
   const [deleting, setDeleting] = useState<Application | null>(null);
   const [deletePending, setDeletePending] = useState(false);
   const [flash, setFlash] = useState<FlashbarProps.MessageDefinition[]>([]);
+  // Panel di samping; user bisa pindah ke bawah lewat tombol preferensi panel. Di HP otomatis di bawah.
+  const [splitPanelPrefs, setSplitPanelPrefs] = useState<AppLayoutProps.SplitPanelPreferences>({ position: "side" });
+  const [status, setStatus] = useState("");
+  const [source, setSource] = useState("");
+  const counts = countByStatus(rows);
 
-  const { items, collectionProps, paginationProps } = useCollection(rows, {
+  const addButton = (
+    <Button variant="primary" iconName="add-plus" onClick={() => setEditing("new")}>
+      Tambah lamaran
+    </Button>
+  );
+
+  // processItems jalan tiap render, jadi filteringFunction bisa baca status/source dari state.
+  const { items, actions, filteredItemsCount, collectionProps, filterProps, paginationProps } = useCollection(rows, {
+    filtering: {
+      filteringFunction: (item, text) => matches(item, { text, status, source }),
+    },
     sorting: { defaultState: { sortingColumn: COLUMNS[2], isDescending: true } },
     pagination: { pageSize: 20 },
   });
+  const filtered = !!(filterProps.filteringText || status || source);
+
+  function filterStatus(value: string) {
+    setStatus(value);
+    actions.setCurrentPage(1);
+  }
+
+  function filterSource(value: string) {
+    setSource(value);
+    actions.setCurrentPage(1);
+  }
+
+  function clearFilters() {
+    actions.setFiltering("");
+    setStatus("");
+    setSource("");
+  }
 
   function notify(type: FlashbarProps.Type, content: string) {
     const id = String(Date.now());
@@ -88,12 +117,6 @@ export default function Tracker({ email, rows }: { email: string; rows: Applicat
     router.replace("/login");
     router.refresh();
   }
-
-  const addButton = (
-    <Button variant="primary" iconName="add-plus" onClick={() => setEditing("new")}>
-      Tambah lamaran
-    </Button>
-  );
 
   return (
     <>
@@ -118,69 +141,126 @@ export default function Tracker({ email, rows }: { email: string; rows: Applicat
         notifications={<Flashbar items={flash} />}
         splitPanelOpen={!!selected}
         onSplitPanelToggle={({ detail }) => !detail.open && setSelectedId(null)}
-        // Di layar sempit (HP) Cloudscape otomatis pindahin panel ke bawah.
-        splitPanelPreferences={{ position: "side" }}
+        splitPanelPreferences={splitPanelPrefs}
+        onSplitPanelPreferencesChange={({ detail }) => setSplitPanelPrefs(detail)}
         splitPanel={
           selected ? (
             <SplitPanel
               header={selected.company}
               closeBehavior="hide"
-              hidePreferencesButton
-              headerActions={
-                <SpaceBetween direction="horizontal" size="xs">
-                  <Button onClick={() => setEditing(selected)}>Edit</Button>
-                  <Button onClick={() => setDeleting(selected)}>Hapus</Button>
-                </SpaceBetween>
-              }
             >
-              <ApplicationDetail app={selected} />
+              {/* Aksi di isi panel, bukan headerActions: headerActions nggak bisa wrap, jadi judul kegencet di panel samping. */}
+              <ApplicationDetail
+                app={selected}
+                actions={
+                  <SpaceBetween direction="horizontal" size="xs">
+                    <Button iconName="edit" onClick={() => setEditing(selected)}>
+                      Edit
+                    </Button>
+                    <Button iconName="remove" onClick={() => setDeleting(selected)}>
+                      Hapus
+                    </Button>
+                  </SpaceBetween>
+                }
+              />
             </SplitPanel>
           ) : undefined
         }
         content={
-          <Table
-            {...collectionProps}
-            variant="full-page"
-            stickyHeader
-            trackBy="id"
-            items={items}
-            columnDefinitions={COLUMNS}
-            selectionType="single"
-            selectedItems={selected ? [selected] : []}
-            onSelectionChange={({ detail }) => setSelectedId(detail.selectedItems[0]?.id ?? null)}
-            onRowClick={({ detail }) => setSelectedId(detail.item.id)}
-            submitEdit={async (item, _column, value) => {
-              const result = await updateStatus(item.id, value);
-              // Throw biar Cloudscape tetap di mode edit; pesannya lewat Flashbar.
-              if (!result.ok) {
-                notify("error", result.error);
-                throw new Error(result.error);
-              }
-            }}
-            ariaLabels={{
-              itemSelectionLabel: (_, r) => `${r.company} – ${r.position}`,
-              selectionGroupLabel: "Pilih lamaran",
-              activateEditLabel: (column, item) => `Edit ${column.header} ${item.company}`,
-              cancelEditLabel: () => "Batal",
-              submitEditLabel: () => "Simpan",
-              submittingEditText: () => "Menyimpan",
-              successfulEditLabel: () => "Tersimpan",
-            }}
+          <ContentLayout
             header={
-              <Header variant="awsui-h1-sticky" counter={`(${rows.length})`} actions={addButton}>
+              <Header variant="h1" description="Semua lamaran kerja kamu di satu tempat." actions={addButton}>
                 Lamaran
               </Header>
             }
-            empty={
-              <Box textAlign="center" color="inherit">
-                <SpaceBetween size="m">
-                  <b>Belum ada lamaran</b>
-                  {addButton}
-                </SpaceBetween>
-              </Box>
-            }
-            pagination={<Pagination {...paginationProps} />}
-          />
+          >
+            <SpaceBetween size="l">
+              <Container header={<Header variant="h2" description="Klik angka buat filter tabel ke status itu.">Ringkasan status</Header>}>
+                <KeyValuePairs
+                  columns={4}
+                  minColumnWidth={120}
+                  items={STATUSES.map((s) => ({
+                    label: s,
+                    value: (
+                      <Link variant="awsui-value-large" onFollow={() => filterStatus(s)} ariaLabel={`${counts[s]} lamaran ${s}, filter`}>
+                        {counts[s]}
+                      </Link>
+                    ),
+                  }))}
+                />
+              </Container>
+              <Table
+                {...collectionProps}
+                variant="container"
+                trackBy="id"
+                stickyColumns={{ first: 1 }}
+                empty={
+                  <Box textAlign="center" color="inherit">
+                    <SpaceBetween size="m">
+                      {rows.length ? (
+                        <>
+                          <b>Nggak ada lamaran yang cocok</b>
+                          <Button onClick={clearFilters}>Hapus filter</Button>
+                        </>
+                      ) : (
+                        <>
+                          <b>Belum ada lamaran</b>
+                          {addButton}
+                        </>
+                      )}
+                    </SpaceBetween>
+                  </Box>
+                }
+                items={items}
+                columnDefinitions={COLUMNS}
+                selectionType="single"
+                selectedItems={selected ? [selected] : []}
+                onSelectionChange={({ detail }) => setSelectedId(detail.selectedItems[0]?.id ?? null)}
+                onRowClick={({ detail }) => setSelectedId(detail.item.id)}
+                ariaLabels={{
+                  itemSelectionLabel: (_, r) => `${r.company} – ${r.position}`,
+                  selectionGroupLabel: "Pilih lamaran",
+                }}
+                header={
+                  <Header
+                    variant="h2"
+                    counter={filtered ? `(${filteredItemsCount}/${rows.length})` : `(${rows.length})`}
+                  >
+                    Daftar lamaran
+                  </Header>
+                }
+                filter={
+                  <Grid
+                    gridDefinition={[
+                      { colspan: { default: 12, m: 6 } },
+                      { colspan: { default: 12, xs: 6, m: 3 } },
+                      { colspan: { default: 12, xs: 6, m: 3 } },
+                    ]}
+                  >
+                    <TextFilter
+                      {...filterProps}
+                      filteringPlaceholder="Cari perusahaan / posisi"
+                      filteringAriaLabel="Cari perusahaan atau posisi"
+                      countText={filtered ? `${filteredItemsCount} hasil` : undefined}
+                    />
+                    <Select
+                      selectedOption={status ? { value: status } : ALL_STATUS}
+                      onChange={({ detail }) => filterStatus(detail.selectedOption.value ?? "")}
+                      options={STATUS_FILTER_OPTIONS}
+                      ariaLabel="Filter status"
+                    />
+                    <Select
+                      selectedOption={source ? { value: source } : ALL_SOURCE}
+                      onChange={({ detail }) => filterSource(detail.selectedOption.value ?? "")}
+                      options={SOURCE_FILTER_OPTIONS}
+                      ariaLabel="Filter platform"
+                    />
+                  </Grid>
+                }
+                pagination={<Pagination {...paginationProps} />}
+              />
+            </SpaceBetween>
+          </ContentLayout>
         }
       />
 

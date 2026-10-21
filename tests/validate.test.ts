@@ -57,7 +57,7 @@ test("rejects overly long text", () => {
   expect(validateApplication({ ...valid, requirements: "x".repeat(10001) }).errors?.requirements).toBeDefined();
 });
 
-test("isStatus guards inline status edits", () => {
+test("isStatus only accepts known statuses", () => {
   expect(isStatus("Interview HR")).toBe(true);
   expect(isStatus("Hired")).toBe(false);
   expect(isStatus(undefined)).toBe(false);

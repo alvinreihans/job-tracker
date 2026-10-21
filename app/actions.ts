@@ -2,7 +2,7 @@
 
 import { refresh } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { isStatus, validateApplication, type FieldErrors } from "@/lib/validate";
+import { validateApplication, type FieldErrors } from "@/lib/validate";
 
 // Error dikembalikan sebagai nilai, bukan di-throw: di production Next menyensor pesan error dari server action.
 export type ActionResult = { ok: true; id: string } | { ok: false; error: string; fieldErrors?: FieldErrors };
@@ -32,24 +32,6 @@ export async function saveApplication(input: Record<string, unknown>, id?: strin
   if (!data) return { ok: false, error: NOT_FOUND };
   refresh();
   return { ok: true, id: data.id };
-}
-
-export async function updateStatus(id: string, status: unknown): Promise<ActionResult> {
-  const supabase = await client();
-  if (!supabase) return { ok: false, error: "Sesi habis. Login lagi ya." };
-  if (!isStatus(status)) return { ok: false, error: "Status nggak valid." };
-
-  const { data, error } = await supabase
-    .from("applications")
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select("id")
-    .maybeSingle();
-
-  if (error) return { ok: false, error: "Gagal ganti status. Coba lagi." };
-  if (!data) return { ok: false, error: NOT_FOUND };
-  refresh();
-  return { ok: true, id };
 }
 
 export async function deleteApplication(id: string): Promise<ActionResult> {

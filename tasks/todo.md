@@ -65,14 +65,9 @@ Lihat [plan.md](plan.md) buat konteks. 👤 = butuh aksi kamu di dashboard.
   - Depends: T6
   - Size: M
 
-- [x] **T8: Ganti status langsung di tabel**
-  - Acceptance: kolom Status bisa diedit inline (`submitEdit` + Select). Gagal simpan → nilai balik + pesan error.
-  - Verify: manual. Ganti status → reload → tetap.
-  - Files: `components/Tracker.tsx`, `app/actions.ts`
-  - Depends: T7
-  - Size: XS
+- [x] ~~**T8: Ganti status cepat**~~ **Dibatalkan.** Inline edit di tabel ikut buka detail, dan tombol di split panel bikin judul kegencet. Status diganti lewat Modal Edit (T7).
 
-- [ ] **T9: Filter status/platform + search + ringkasan status**
+- [x] **T9: Filter status/platform + search + ringkasan status**
   - Acceptance: TextFilter (perusahaan/posisi, case-insensitive) + 2 Select (status, platform), bisa dikombinasi, plus counter jumlah hasil. Ringkasan per status (Container + KeyValuePairs) dari semua data user.
   - Verify: test Vitest buat fungsi `matches()`. Manual: kombinasi filter, dan jumlah di ringkasan = jumlah baris saat difilter status itu.
   - Files: `lib/filter.ts`, `components/Tracker.tsx`, `tests/filter.test.ts`
@@ -80,7 +75,7 @@ Lihat [plan.md](plan.md) buat konteks. 👤 = butuh aksi kamu di dashboard.
   - Size: S
 
 ### Checkpoint C: CRUD lengkap
-- [ ] Success Criteria 4–6 & 10 lulus di lokal. Build/lint/test lulus. Review.
+- [x] Success Criteria 4–6 & 10 lulus di lokal. Build/lint/test lulus. Review.
 
 ## Phase 4: Data & deploy
 
